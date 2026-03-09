@@ -1,0 +1,16 @@
+
+# required packages #
+
+numpy
+opencv-python
+scipy
+scikit-image
+pandas
+matplotlib
+openpyxl
+av
+nd2
+nd2[legacy]
+xarray
+gooey
+PyQt6
