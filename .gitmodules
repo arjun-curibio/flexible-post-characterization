@@ -1,0 +1,3 @@
+[submodule "libs/MantaVision"]
+	path = libs/MantaVision
+	url = https://github.com/CuriBio/MantaVision.git
