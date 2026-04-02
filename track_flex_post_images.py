@@ -14,7 +14,7 @@ import sys
 import math
 import argparse
 
-import cv2 as cv
+import cv2
 import numpy as np
 import openpyxl
 
@@ -90,7 +90,7 @@ def select_template(first_image_rgb: np.ndarray):
         sys.exit(1)
 
     # extract the grayscale template from the selected region
-    gray_image = cv.cvtColor(first_image_rgb, cv.COLOR_BGR2GRAY).astype(np.float32)
+    gray_image = cv2.cvtColor(first_image_rgb, cv2.COLOR_BGR2GRAY).astype(np.float32)
     gray_adjusted = intensityAdjusted(gray_image)
     template_gray = gray_adjusted[roi["y_start"] : roi["y_end"], roi["x_start"] : roi["x_end"]]
 
@@ -107,15 +107,15 @@ def find_most_circular_object(image_rgb: np.ndarray):
     Expects two concentric circles (e.g. inner and outer edge of a post cross-section).
     Among detected circles that share approximately the same center, returns the larger one.
     """
-    gray = cv.cvtColor(image_rgb, cv.COLOR_BGR2GRAY)
-    blurred = cv.GaussianBlur(gray, (9, 9), 2)
+    gray = cv2.cvtColor(image_rgb, cv2.COLOR_BGR2GRAY)
+    blurred = cv2.GaussianBlur(gray, (9, 9), 2)
 
     img_height = gray.shape[0]
 
     # Use a small minDist so concentric (nearly overlapping center) circles are both detected
-    circles = cv.HoughCircles(
+    circles = cv2.HoughCircles(
         blurred,
-        cv.HOUGH_GRADIENT,
+        cv2.HOUGH_GRADIENT,
         dp=1,
         minDist=5,
         param1=100,
@@ -228,7 +228,7 @@ def track_across_images(images, template_gray, max_rotation=None):
 
     for i, (filename, image_rgb) in enumerate(images):
         # convert to grayscale and intensity-adjust to match the template
-        gray_image = cv.cvtColor(image_rgb, cv.COLOR_BGR2GRAY).astype(np.float32)
+        gray_image = cv2.cvtColor(image_rgb, cv2.COLOR_BGR2GRAY).astype(np.float32)
         gray_adjusted = intensityAdjusted(gray_image)
 
         # compute rotation pivot from previous match (center of template region)
@@ -305,7 +305,7 @@ def draw_match_region(annotated, result):
         # no meaningful rotation — draw a simple rectangle
         top_left = (int(round(match_x)), int(round(match_y)))
         bottom_right = (int(round(match_x + w)), int(round(match_y + h)))
-        cv.rectangle(annotated, top_left, bottom_right, rect_color, rect_thickness)
+        cv2.rectangle(annotated, top_left, bottom_right, rect_color, rect_thickness)
     else:
         # draw a rotated rectangle to show the matched orientation
         # the four corners of the un-rotated template region
@@ -333,7 +333,7 @@ def draw_match_region(annotated, result):
             ry = center_y + dx * sin_a + dy * cos_a
             rotated_corners.append([int(round(rx)), int(round(ry))])
         rotated_corners = np.array(rotated_corners, dtype=np.int32)
-        cv.polylines(annotated, [rotated_corners], isClosed=True, color=rect_color, thickness=rect_thickness)
+        cv2.polylines(annotated, [rotated_corners], isClosed=True, color=rect_color, thickness=rect_thickness)
 
 
 def save_annotated_images(results, output_dir: str):
@@ -350,7 +350,7 @@ def save_annotated_images(results, output_dir: str):
         img_width = annotated.shape[1]
         font_scale = max(0.5, img_width / 1500.0)
         font_thickness = max(1, int(font_scale * 2))
-        font = cv.FONT_HERSHEY_SIMPLEX
+        font = cv2.FONT_HERSHEY_SIMPLEX
 
         # draw the matched template region (axis-aligned or rotated)
         draw_match_region(annotated, result)
@@ -360,12 +360,12 @@ def save_annotated_images(results, output_dir: str):
         if circle is not None:
             center = (int(round(circle["center_x"])), int(round(circle["center_y"])))
             radius = int(round(circle["radius"]))
-            cv.circle(annotated, center, radius, (0, 255, 255), 2)  # yellow circle
-            cv.circle(annotated, center, 3, (0, 255, 255), -1)  # center dot
+            cv2.circle(annotated, center, radius, (0, 255, 255), 2)  # yellow circle
+            cv2.circle(annotated, center, 3, (0, 255, 255), -1)  # center dot
 
             # diameter label near the circle
             circle_label = f"d={circle['diameter']:.1f} px"
-            cl_size, _ = cv.getTextSize(circle_label, font, font_scale, font_thickness)
+            cl_size, _ = cv2.getTextSize(circle_label, font, font_scale, font_thickness)
             cl_x = center[0] - cl_size[0] // 2
             cl_y = center[1] + radius + cl_size[1] + 10
             # keep label within image bounds
@@ -373,8 +373,8 @@ def save_annotated_images(results, output_dir: str):
             cl_y = min(cl_y, annotated.shape[0] - 4)
             bg_tl = (cl_x - 2, cl_y - cl_size[1] - 4)
             bg_br = (cl_x + cl_size[0] + 2, cl_y + 4)
-            cv.rectangle(annotated, bg_tl, bg_br, (0, 0, 0), cv.FILLED)
-            cv.putText(annotated, circle_label, (cl_x, cl_y), font, font_scale, (0, 255, 255), font_thickness)
+            cv2.rectangle(annotated, bg_tl, bg_br, (0, 0, 0), cv2.FILLED)
+            cv2.putText(annotated, circle_label, (cl_x, cl_y), font, font_scale, (0, 255, 255), font_thickness)
 
         # build the displacement label
         dx = result["x_displacement"]
@@ -388,7 +388,7 @@ def save_annotated_images(results, output_dir: str):
         # position the label just above the match region (or below if no room)
         top_left_y = int(round(result["match_y"]))
         bottom_right_y = int(round(result["match_y"] + result["template_h"]))
-        text_size, _ = cv.getTextSize(label, font, font_scale, font_thickness)
+        text_size, _ = cv2.getTextSize(label, font, font_scale, font_thickness)
         text_x = int(round(result["match_x"]))
         text_y = top_left_y - 10
         if text_y - text_size[1] < 0:
@@ -397,14 +397,14 @@ def save_annotated_images(results, output_dir: str):
         # draw a dark background behind the text for contrast
         bg_top_left = (text_x - 2, text_y - text_size[1] - 4)
         bg_bottom_right = (text_x + text_size[0] + 2, text_y + 4)
-        cv.rectangle(annotated, bg_top_left, bg_bottom_right, (0, 0, 0), cv.FILLED)
-        cv.putText(annotated, label, (text_x, text_y), font, font_scale, (0, 255, 0), font_thickness)
+        cv2.rectangle(annotated, bg_top_left, bg_bottom_right, (0, 0, 0), cv2.FILLED)
+        cv2.putText(annotated, label, (text_x, text_y), font, font_scale, (0, 255, 0), font_thickness)
 
         # save the annotated image
         base_name, ext = os.path.splitext(result["filename"])
         output_filename = f"{base_name}_tracked{ext}"
         output_path = os.path.join(output_dir, output_filename)
-        cv.imwrite(output_path, annotated)
+        cv2.imwrite(output_path, annotated)
         print(f"  Saved: {output_filename}")
 
     print(f"\nAnnotated images saved to: {output_dir}")
