@@ -14,3 +14,4 @@ nd2[legacy]
 xarray
 gooey
 PyQt6
+openpyxl
