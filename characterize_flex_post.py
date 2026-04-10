@@ -37,29 +37,6 @@ if not hasattr(__main__, "__file__"):
 from libs.MantaVision.src.image_utils import openImage
 from libs.MantaVision.src.track_template import matchResults, userDrawnROI, intensityAdjusted, rotatedImage
 
-
-def contentsOfDir(dir_path, search_terms, search_extension_only=True):
-    """Return (base_dir, [(file_name, file_ext), ...]) for files matching search_terms."""
-    import glob as _glob
-
-    all_files_found = []
-    if os.path.isdir(dir_path):
-        base_dir = dir_path
-        for term in search_terms:
-            pattern = "*" + term if search_extension_only else "*" + term + "*"
-            all_files_found.extend(_glob.glob(os.path.join(dir_path, pattern)))
-    else:
-        base_dir = os.path.dirname(dir_path)
-        all_files_found = [dir_path]
-    if not all_files_found:
-        return None, None
-    files = []
-    for fp in all_files_found:
-        name, ext = os.path.splitext(os.path.basename(fp))
-        files.append((name, ext))
-    return base_dir, files
-
-
 # ============================================================================
 # USER CONFIGURATION
 # ============================================================================
@@ -82,6 +59,28 @@ ROTATION_INCREMENT = 0.25  # degrees — smaller is more accurate but slower
 # ============================================================================
 
 IMAGE_EXTENSIONS = [".jpg", ".jpeg", ".png", ".tif", ".tiff", ".bmp"]
+
+
+def contentsOfDir(dir_path, search_terms, search_extension_only=True):
+    """Return (base_dir, [(file_name, file_ext), ...]) for files matching search_terms."""
+    import glob as _glob
+
+    all_files_found = []
+    if os.path.isdir(dir_path):
+        base_dir = dir_path
+        for term in search_terms:
+            pattern = "*" + term if search_extension_only else "*" + term + "*"
+            all_files_found.extend(_glob.glob(os.path.join(dir_path, pattern)))
+    else:
+        base_dir = os.path.dirname(dir_path)
+        all_files_found = [dir_path]
+    if not all_files_found:
+        return None, None
+    files = []
+    for fp in all_files_found:
+        name, ext = os.path.splitext(os.path.basename(fp))
+        files.append((name, ext))
+    return base_dir, files
 
 
 def user_drawn_circle(image_rgb: np.ndarray, title_text: str = "DRAW CIRCLE around reference feature, then press ENTER"):
@@ -185,7 +184,7 @@ def calibrate_scale(image_rgb: np.ndarray, feature_diameter_mm: float):
     print(f"  Detected diameter: {diameter_px:.1f} px")
     print(f"  Scale: {scale_px_per_mm:.1f} px/mm  ({scale_px_per_m:.1f} px/m)")
 
-    return scale_px_per_m
+    return scale_px_per_m, circle
 
 
 # ============================================================================
@@ -207,7 +206,7 @@ def load_images(image_dir: str):
     images = []
     for file_name, file_ext in image_files:
         full_name = file_name + file_ext
-        file_path = os.path.join(base_dir, full_name)
+        file_path = os.path.join(base_dir, full_name)  # type: ignore
         image = openImage(file_path, rgb_required=True)
         if image is None:
             print(f"WARNING: Could not load {full_name}, skipping.")
@@ -369,10 +368,11 @@ def draw_match_region(annotated, result):
         cv2.polylines(annotated, [rotated_corners], isClosed=True, color=rect_color, thickness=rect_thickness)
 
 
-def save_annotated_images(results, output_dir: str):
+def save_annotated_images(results, output_dir: str, calibration_circle=None):
     """
     Draw a rectangle where the template was found, overlay displacement text,
-    and save the annotated image.
+    and save the annotated image.  When *calibration_circle* is provided, the
+    circle is drawn on the first image.
     """
     os.makedirs(output_dir, exist_ok=True)
 
@@ -385,6 +385,16 @@ def save_annotated_images(results, output_dir: str):
         font = cv2.FONT_HERSHEY_SIMPLEX
 
         draw_match_region(annotated, result)
+
+        if i == 0 and calibration_circle is not None:
+            cx = int(round(calibration_circle["center_x"]))
+            cy = int(round(calibration_circle["center_y"]))
+            r = int(round(calibration_circle["radius"]))
+            cv2.circle(annotated, (cx, cy), r, (255, 0, 0), 2)
+            cv2.circle(annotated, (cx, cy), 3, (255, 0, 0), -1)
+            diameter_px = calibration_circle["diameter"]
+            circle_label = f"diameter = {diameter_px:.1f} px"
+            cv2.putText(annotated, circle_label, (cx + r + 10, cy), font, font_scale, (255, 0, 0), font_thickness)
 
         dx = result["x_displacement"]
         dy = result["y_displacement"]
@@ -453,7 +463,7 @@ def write_results_to_xlsx(results, output_path: str):
 
     for col in sheet.columns:
         max_length = 0
-        col_letter = col[0].column_letter
+        col_letter = col[0].column_letter  # type: ignore
         for cell in col:
             if cell.value is not None:
                 max_length = max(max_length, len(str(cell.value)))
@@ -490,7 +500,7 @@ def compute_spring_constants(spreadsheet_path: str, scale: float, weight_mass: f
     for row in range(2, 2 + len(weight_num)):
         cell_value = ws.cell(row=row, column=3).value
         if cell_value is not None:
-            y_disp_pixels.append(float(cell_value))
+            y_disp_pixels.append(float(cell_value))  # type: ignore
 
     y_disp_pixels = np.array(y_disp_pixels)
 
@@ -498,8 +508,8 @@ def compute_spring_constants(spreadsheet_path: str, scale: float, weight_mass: f
     displacement_m = y_disp_pixels / scale
 
     result = linregress(force, displacement_m)
-    spring_constant = 1.0 / result.slope if result.slope != 0 else float("inf")
-    r_squared = result.rvalue**2
+    spring_constant = 1.0 / result.slope if result.slope != 0 else float("inf")  # type: ignore
+    r_squared = result.rvalue**2  # type: ignore
 
     return spring_constant, r_squared, displacement_m, force, result
 
@@ -527,18 +537,21 @@ def plot_spring_constant_results(force, displacement_m, regression_result, sprin
 if __name__ == "__main__":
     # --- Part 1: Image tracking ---
 
-    print("loading image dir")
     if IMAGE_DIR is None:
         import platform
+
         if platform.system() == "Darwin":
             import subprocess
+
             result = subprocess.run(
                 ["osascript", "-e", 'POSIX path of (choose folder with prompt "Select folder containing images to analyze")'],
-                capture_output=True, text=True,
+                capture_output=True,
+                text=True,
             )
             selected_dir = result.stdout.strip()
         else:
             from tkinter import Tk, filedialog
+
             root = Tk()
             root.withdraw()
             selected_dir = filedialog.askdirectory(title="Select folder containing images to analyze")
@@ -561,8 +574,9 @@ if __name__ == "__main__":
     print(f"Found {len(images)} images.\n")
 
     # --- Scale calibration ---
+    calibration_circle = None
     if SCALE is None:
-        scale_px_per_m = calibrate_scale(images[0][1], FEATURE_DIAMETER_MM)
+        scale_px_per_m, calibration_circle = calibrate_scale(images[0][1], FEATURE_DIAMETER_MM)
     else:
         scale_px_per_m = SCALE * 1000.0  # convert px/mm to px/m
         print(f"  Using manual scale: {SCALE} px/mm ({scale_px_per_m} px/m)")
@@ -579,7 +593,7 @@ if __name__ == "__main__":
 
     print("\nSaving annotated images...")
     annotated_dir = os.path.join(IMAGE_DIR, "tracked")
-    save_annotated_images(results, annotated_dir)
+    save_annotated_images(results, annotated_dir, calibration_circle=calibration_circle)
 
     write_results_to_xlsx(results, output_xlsx)
 
@@ -592,9 +606,7 @@ if __name__ == "__main__":
     print(f"  Weight mass: {WEIGHT_MASS} kg")
     print(f"  Number of weight levels: {len(WEIGHT_NUM)}")
 
-    spring_constant, r_squared, displacement_m, force, regression = compute_spring_constants(
-        output_xlsx, scale_px_per_m, WEIGHT_MASS, WEIGHT_NUM
-    )
+    spring_constant, r_squared, displacement_m, force, regression = compute_spring_constants(output_xlsx, scale_px_per_m, WEIGHT_MASS, WEIGHT_NUM)
 
     print(f"\n  Spring constant: {spring_constant:.4f} N/m")
     print(f"  R\u00b2: {r_squared:.6f}")
